@@ -6,10 +6,9 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"os"
 	"time"
 )
-
-const bucket = "climbingplan.appspot.com"
 
 func getGCSFilesNew(fileNames []string) []string {
 	var outFileNames []string
@@ -23,23 +22,30 @@ func getGCSFilesNew(fileNames []string) []string {
 	ctx, cancel := context.WithTimeout(ctx, time.Second*50)
 	defer cancel()
 	for _, fileName := range fileNames {
-		reader, err := client.Bucket(bucket).Object("Routines/" + fileName).NewReader(ctx)
-		if err != nil {
-			fmt.Errorf("NewReader error: %v", err)
+		bucketName := os.Getenv("BUCKET")
+		if bucketName == "" {
+			log.Printf("Error reading bucket var")
+		}
+		pdfsPath := os.Getenv("PDFS_PATH")
+		if pdfsPath == "" {
+			log.Printf("Error reading pdfspath var")
+		}
+		reader, bucketFetchError := client.Bucket(bucketName).Object(pdfsPath + fileName).NewReader(ctx)
+		if bucketFetchError != nil {
+			log.Printf("Error fetching bucket file"+fileName)
 		}
 		defer reader.Close()
 
-		data, error := ioutil.ReadAll(reader)
-		if error != nil {
-			fmt.Errorf("ioutil.ReadAll: %v", error)
+		data, readError := ioutil.ReadAll(reader)
+		if readError != nil {
+			log.Printf("ioutil.ReadAll: %v", readError)
 		}
 
-		tmpfile, err := ioutil.TempFile("/tmp", fileName)
-		if err != nil {
-			log.Fatal(err)
+		tmpfile, fileCreationError := ioutil.TempFile("/tmp", fileName)
+		if fileCreationError != nil {
+			log.Printf("Error creating tmp file: %v", fileCreationError)
 		}
 		outFileNames = append(outFileNames, tmpfile.Name())
-		//defer os.Remove(tmpfile.Name()) // clean up
 
 		if _, err := tmpfile.Write(data); err != nil {
 			log.Fatal(err)
@@ -47,11 +53,6 @@ func getGCSFilesNew(fileNames []string) []string {
 		if err := tmpfile.Close(); err != nil {
 			log.Fatal(err)
 		}
-
-		//error = TempFile("tmp/",fileName, data, 0664)
-		//if error != nil {
-		//	fmt.Errorf("WriteFile: %v", error)
-		//}
 		fmt.Printf("Blob %s create.\n", fileName)
 	}
 
